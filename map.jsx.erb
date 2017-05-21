@@ -1,0 +1,690 @@
+class Map extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      selected_users: props.selected_users
+    }
+    this.markers = [];
+    this.directions = [];
+    this.selected_users = props.selected_users;
+    this.map = null;
+  }
+
+  render() {
+    return (
+      <div id='map' className='map_react '/>
+    )
+  }
+
+  componentDidMount() {
+    this.initializeMap();
+  }
+
+  initializeMap() {
+		const { company } = this.props;
+		let map_element = document.getElementById('map');
+		let map_options = LF.getMapOption(company);
+    this.directions_service = new google.maps.DirectionsService();
+		this.map = new google.maps.Map(map_element, map_options);
+    this.draw(this.props, true);
+	}
+
+  componentWillReceiveProps(nextProps) {
+    let changes_in_selected_users = nextProps.selected_users.length != this.state.selected_users.length;
+    console.log(nextProps.auto_pan);
+    this.draw(nextProps, nextProps.auto_pan);
+    // this.setState(Object.assign({}, this.state, {
+    //   selected_users: nextProps.selected_users
+    // }))
+  }
+
+  draw(props, changes_in_selected_users) {
+    // where most of drawing happen
+    this.plotSearch(props, _ => {
+      this.plotJobs(props, false, _ => {
+        this.plotUsers(props, _ => {
+          // only refit bounds if there were changes in users selected
+          if (changes_in_selected_users)
+            this.fitBounds();
+            console.log(this.markers);
+            console.log(this.directions);
+        })
+      });
+    });
+  }
+
+  plotSearch(nextProps, callback) {
+    const { geo_location_search } = nextProps;
+    if (geo_location_search)
+      this.addOrUpdateMarker(geo_location_search, 'search');
+    else
+      this.removeMarker('search');
+
+    callback();
+  }
+
+  plotUsers(nextProps, callback) {
+    const { markers, map, directions } = this;
+    let { users, selected_users, date } = nextProps;
+    let current_user_markers = markers.filter(marker => marker.user_id != null);
+    let current_user_directions = directions;
+    // hide markers of users not in next props
+    for (let i = 0; i < current_user_markers.length; i ++) {
+      let marker = current_user_markers[i];
+      if (
+        (selected_users.indexOf(marker.user_id) == -1) ||  //user no longer in selected array
+        (!moment(new Date(marker.date)).isSame(moment(date), 'day')) //different day
+      ) {
+        // this user is no longer selected. Hide the marker.
+        console.log(`remove worker ${marker.key}`);
+        this.removeMarker(marker.key);
+        // hide all his job and start/end markers;
+        let all_user_related_markers = markers.filter( each_marker =>
+          each_marker.user_id == marker.user_id
+        );
+        for (let i = 0; i < all_user_related_markers.length; i ++ ) {
+          this.removeMarker(all_user_related_markers[i].key)
+        }
+      }
+    }
+
+    // hide directions of users not in next props
+    for (let i = 0; i < current_user_directions.length; i ++) {
+      let direction = current_user_directions[i];
+
+      if (
+        (selected_users.indexOf(direction.user_id) == -1) || // user was unselected
+        !(moment(new Date(date)).isSame(moment(new Date(direction.date)), 'day')) //same day
+      ) {
+        console.log(' ');
+        console.log('--------------------------------------');
+        console.log(new Date(date).toString());
+        console.log(new Date(direction.date).toString());
+        console.log('--------------------------------------');
+        console.log(' ');
+        // this user is no longer selected. Hide the direction.
+        this.removeDirection(direction.key);
+      }
+    }
+    // show markers of those that are
+    for (let i = 0; i < users.length; i ++) {
+      let user = users[i];
+
+      if (moment(date).isSame(moment(), 'day'))
+        this.addOrUpdateMarker(user.last_known_location, 'user', user, user.id);
+
+      if (user.jobs) {
+        this.plotJobs(user, true);
+        this.plotStartAndEndPoints(user);
+        this.plotPathFromPastTravelReports(user);
+        if (moment(date).diff(moment(), 'days') >= 0)
+          // if not past
+          this.plotPathToFutureJobs(user);
+      }
+    }
+    callback();
+  }
+
+  plotPathFromPastTravelReports(user) {
+    const { date } = this.props;
+    let key = `past_path_user_${user.id}_on_${moment(new Date(date)).format('DD_MM_YY')}`
+    let direction = this.directions.filter( direction => direction.key == key)[0];
+    let travel_reports = user.travel_reports.filter(report =>
+      moment(new Date(report.start_time)).isSame(moment(date), 'day')
+    )
+    if (travel_reports && travel_reports.length) {
+      if (!direction) {
+        // new directions
+        direction = {
+          key,
+          type: 'past',
+          date: (new Date(date).toString()),
+          object: user,
+          visible: true,
+          user_id: user.id,
+          direction_object: new google.maps.Polyline({
+            strokeColor: '#bfbfbf',
+            strokeOpacity: 0.7,
+            strokeWeight: 5,
+
+          })
+        };
+        this.directions.push(direction);
+      }
+
+      let actual_route_array = travel_reports.reduce((a,b) => {
+        return a.concat(b.actual_route);
+      }, []);
+
+      if (moment().isSame(moment(date), 'day'))
+        actual_route_array.push(user.last_known_location);
+
+      let path = actual_route_array.map(coord => {
+        let coords = coord.split(",");
+        return new google.maps.LatLng(parseFloat(coords[0]), parseFloat(coords[1]));
+      })
+
+      direction.direction_object.setPath(path);
+      direction.direction_object.setMap(this.map);
+    }
+  }
+
+  plotPathToFutureJobs(user) {
+    const { date } = this.props;
+    let points = this.getPoints(user);
+
+    let key = `future_path_user_${user.id}_on_${moment(new Date(date)).format('DD_MM_YY')}`
+    let direction = this.directions.filter( direction => direction.key == key)[0];
+
+    if (points.length > 1) {
+      // [current_position, next_job_geo, ...]
+      console.log(`plotting path for ${user.first_name} on ${new Date(date).toString()}`);
+      if (!direction) {
+        // new directions
+        direction = {
+          key,
+          type: 'future',
+          date: (new Date(date).toString()),
+          object: user,
+          user_id: user.id,
+          visible: true,
+          direction_object: new google.maps.DirectionsRenderer({
+            suppressMarkers: true,
+            preserveViewport: true,
+            // polylineOptions: {
+            //   icons: [
+            //     // {
+            //     //   icon: {path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW},
+            //     //   offset: '100%'
+            //     // },
+            //     {
+            //       icon: {
+            //         path: google.maps.SymbolPath.CIRCLE,
+            //         scale: 8,
+            //         strokeColor: '#393'
+            //       },
+            //       offset: '100%',
+            //     }
+            //   ],
+            //   strokeOpacity: 0.5,
+            //   strokeWeight: 5,
+            // }
+          })
+        };
+        this.directions.push(direction);
+      }
+      direction.object = user;
+      direction.direction_object.setMap(this.map);
+
+      let request = {
+        origin: points[0],
+        destination: points[points.length - 1],
+        travelMode: 'DRIVING',
+        waypoints: []
+      };
+
+      for (let i = 1; i < points.length - 1; i ++) {
+        request.waypoints.push({
+          location: points[i],
+          stopover: true
+        })
+      }
+
+      this.directions_service.route(request, (result, status) => {
+        if (status == 'OK') {
+          direction.direction_object.setDirections(result);
+        }
+      })
+    }
+    else if (direction) {
+      // there used to be path, now no more path
+      this.removeDirection(direction.key);
+    }
+  }
+
+  plotStartAndEndPoints(user) {
+    const { date } = this.props;
+    const { markers, map } = this;
+    let { travel_reports } = user;
+    travel_reports = travel_reports.filter( tr =>
+      tr.actual_route.length > 0 &&
+      tr.start_time &&
+      moment(new Date(tr.start_time)).isSame(moment(date),'day')
+    ) || [];
+    if (travel_reports.length) {
+      // start day
+      let first_report = travel_reports[0];
+      let start_day_point = first_report.actual_route[0];
+      if (start_day_point)
+        this.addOrUpdateMarker(start_day_point, 'start', Object.assign({},first_report, {user}), first_report.user_id);
+
+      // end day
+
+
+      let reports_with_arrival_time = travel_reports.filter( tr => tr.arrival_time && tr.job_id == 1 );
+      let user_inactive_if_today = user.inactive && moment(date).isSame(moment(),'day');
+      if (reports_with_arrival_time.length && user_inactive_if_today) {
+        let last_report = reports_with_arrival_time[reports_with_arrival_time.length - 1];
+        if (last_report.job_id == 1) {
+          let end_day_point = last_report.actual_route[last_report.actual_route.length - 1];
+          if (end_day_point && end_day_point != start_day_point)
+            this.addOrUpdateMarker(end_day_point, 'end', Object.assign({},last_report, {user}), last_report.user_id);
+        }
+      }
+    }
+  }
+
+  plotJobs(unassigned_or_user, is_user, callback) {
+    // NOTE: props passed means unassigned
+    // NOTE: user means user's jobs
+    const { markers, map } = this;
+    const { date } = this.props;
+    let { jobs } = unassigned_or_user;
+    jobs = jobs.filter( job => {
+      return moment(new Date(job.start_date)).isSame(moment(date),'day')
+    }) || [];
+
+    if (jobs) {
+      let job_ids = jobs.map(job => job.id);
+      let current_job_markers = markers.filter( marker =>
+        marker.type == 'job' &&
+        marker.user_id == (is_user ? unassigned_or_user.id : null)
+      )
+      // hide markers of those not in next props
+      for (let i = 0; i < current_job_markers.length; i ++) {
+        let marker = current_job_markers[i];
+        if (job_ids.indexOf(marker.object.id) == -1) {
+          // this job is no longer selected. Hide the marker.
+          this.removeMarker(marker.key);
+        }
+      }
+
+      // show markers of those that are
+      for (let i = 0; i < jobs.length; i ++) {
+        let job = jobs[i];
+        this.addOrUpdateMarker(job.geo_location, 'job', job, (is_user ? unassigned_or_user.id : null));
+      }
+    }
+
+    if (callback) callback();
+  }
+
+  fitBounds() {
+    let bounds = new google.maps.LatLngBounds();
+    const { markers, map } = this;
+    let { company } = this.props;
+
+    if (markers.length) {
+      for (let i = 0; i < markers.length; i ++) {
+        let marker = markers[i].marker_object;
+        // extend those that are visible on map
+        if (marker.getMap()) bounds.extend(marker.getPosition());
+      }
+      map.fitBounds(bounds);
+    }
+    else {
+      // add company's location
+      let company_latlng = LF.getLatLng(company.address);
+      if (company_latlng) bounds.extend(company_latlng);
+      else bounds.extend({
+        lat: 40.712784,
+        lng: -74.005941
+      })
+      map.fitBounds(bounds);
+      map.setZoom(15);
+    }
+  }
+
+  addOrUpdateMarker(position, type, object, user_id) {
+    const { date, onSelectObject } = this.props;
+    let lat = Number(position.split(',')[0]) || null;
+    let lng = Number(position.split(',')[1]) || null;
+        position = {lat, lng};
+        console.log(position);
+
+    let { markers, map } = this;
+    // find if it already exists
+    let index_marker_that_matches_this = markers.findIndex( marker => {
+      return (
+        (marker.type == type) &&
+        (marker.object ? marker.object.id == object.id : true)
+      )
+    });
+    if (index_marker_that_matches_this > -1) {
+      markers[index_marker_that_matches_this].object = object;
+      let marker_that_matches_this = markers[index_marker_that_matches_this];
+      debugger;
+      this.updateMarker(position, marker_that_matches_this);
+      return;
+    }
+    let this_marker = {
+      key: null,
+      position,
+      lat,
+      lng,
+      type,
+      object,
+      marker_options: { map, position },
+      marker_object: null,
+      user_id,
+      date : new Date(date).toString(),
+      visible: true
+    }
+
+    if (type == 'search') {
+      this_marker.key = 'search';
+      // this_marker.info_bubble = new InfoBubble(this.getBubbleOptions(this_marker));
+      // this_marker.info_window = new google.maps.InfoWindow(this.getWindowOptions(this_marker));
+      this_marker.marker_options = Object.assign({}, this_marker.marker_options, {
+        animation: google.maps.Animation.DROP,
+        icon: this.getIcon('search'),
+      })
+    }
+
+    if (type == 'user') {
+      this_marker.key = `user_${this_marker.object.id}`;
+      this_marker.info_bubble = new InfoBubble(this.getBubbleOptions(this_marker));
+      this_marker.marker_options = Object.assign({}, this_marker.marker_options, {
+        icon: this.getIcon('user', this_marker.object),
+        zIndex: 999
+      })
+    }
+
+    if (type == 'job') {
+      this_marker.key = `job_${this_marker.object.id}`;
+      this_marker.info_bubble = new InfoBubble(this.getBubbleOptions(this_marker));
+      this_marker.marker_options = Object.assign({}, this_marker.marker_options, {
+        icon: this.getIcon('job', this_marker.object),
+        zIndex: 99
+      })
+    }
+
+    if (type == 'start') {
+      this_marker.key = `start_day_user_${this_marker.object.id}`;
+      this_marker.info_bubble = new InfoBubble(this.getBubbleOptions(this_marker));
+      this_marker.marker_options = Object.assign({}, this_marker.marker_options, {
+        icon: this.getIcon('start', this_marker.object),
+        zIndex: 999
+      })
+    }
+
+    if (type == 'end') {
+      this_marker.key = `end_day_user_${this_marker.object.id}`;
+      this_marker.info_bubble = new InfoBubble(this.getBubbleOptions(this_marker));
+      this_marker.marker_options = Object.assign({}, this_marker.marker_options, {
+        icon: this.getIcon('end', this_marker.object),
+        zIndex: 999
+      })
+    }
+
+
+    if (true) {
+      // do something else additional along the line, like adding more style
+      // based on status etc.
+    }
+
+    this_marker.marker_object = new google.maps.Marker(this_marker.marker_options);
+    this_marker.marker_object.addListener('mouseover', _ => {
+      if (this_marker.info_bubble) this_marker.info_bubble.open(map, this_marker.marker_object);
+    })
+    this_marker.marker_object.addListener('mouseout', _ => {
+      if (this_marker.info_bubble) this_marker.info_bubble.close();
+    })
+    this_marker.marker_object.addListener('click', _ => {
+      if ('start, end, search'.indexOf(this_marker.type) == -1)
+        onSelectObject({
+          type,
+          id: this_marker.object.id,
+          user_id: this_marker.user_id
+        });
+        Object.assign({}, this_marker.object, {
+          type: this_marker.type
+        })
+    });
+    markers.push(this_marker);
+  }
+
+  getBubbleOptions(marker) {
+    const { map } = this;
+    // let new_lat = marker.lat + (0.00003 * Math.pow(2, (21 - map.getZoom())));
+    let new_lat = marker.lat;
+    let default_options = {
+      // position: new google.maps.LatLng(new_lat, marker.lng),
+      hideCloseButton: true,
+      arrowSize: 0,
+      padding: 0,
+      borderRadius: 0,
+      disableAutoPan: true,
+      shadowStyle: 0,
+      maxWidth: 210,
+      maxHeight: 70,
+      minWidth: 210,
+      minHeight: 70,
+      backgroundColor: 'transparent',
+      borderWidth: 0,
+      borderColor: 'black'
+    }
+    switch (marker.type) {
+      case 'search':
+        return Object.assign({}, default_options, {
+          content: `<i class='lf-icon lf-icon-marker map_bubble map_buble-search lf-icon-big' />`,
+        })
+        break;
+      case 'user':
+        let user = marker.object;
+        return Object.assign({}, default_options, {
+          content: `
+            <div class='map_bubble map_bubble-user'>
+              <div class='map_bubble-user-content'>
+                <span class='map_bubble-user-name lf-bold'>
+                  ${UsersObject.format('name',user)}
+                </span>
+                <div class='lf-float-right map_bubble-user-availability' style='color: ${LF.getColor(user.availability, true)}'>
+                  ${UsersObject.get('availability', user)}
+                </div>
+                <div class='map_bubble-user-location_update'>
+                  Location updated ${moment(user.last_location_update).fromNow()}
+                </div>
+                <div class='map_bubble-user-status' style='background-color: ${LF.getColor(UsersObject.get('status', user), true)}'>
+                  ${UsersObject.get('status', user)}
+                </div>
+              </div>
+            </div>
+          `
+        })
+        break;
+      case 'job':
+        let job = marker.object;
+        return Object.assign({}, default_options, {
+          content: `
+            <div class='map_bubble map_bubble-job' style='border-left-color: #${job.color}'>
+              <div class='map_bubble-job-content'>
+                <span class='map_bubble-job-name lf-bold'>
+                  ${LF.format('string',job.name, 20)}
+                </span>
+                <div class='lf-float-right map_bubble-job-status' style='color: ${LF.getColor(job.status, true)}'>
+                  ${job.status}
+                </div>
+                <div class='map_bubble-job-address'>
+                  ${LF.format('string',JobObject.format('address', job), 30)}
+                </div>
+                <div class='map_bubble-job-time'>
+                  ${moment(new Date(job.start_date)).format('LT')} - ${moment(new Date(job.end_date)).format('LT')}
+                </div>
+              </div>
+            </div>
+          `
+        })
+        break;
+      case 'start':
+      case 'end':
+        let travel_report = marker.object;
+        return Object.assign({}, default_options, {
+          content: `
+            <div class='map_bubble map_bubble-user'>
+              <div class='map_bubble-user-content'>
+                <span class='map_bubble-user-name lf-bold'>
+                  ${UsersObject.format('name', travel_report.user)}
+                </span>
+                <br />
+                <div class='lf-float-right '>
+                  ${moment(new Date(marker.type == 'start' ? travel_report.start_time : travel_report.arrival_time)).format('LT')}
+                </div>
+                <span class='map_bubble-user-name lf-bold'>
+                  <span class='lf-capitalize'>${marker.type} day</span>
+                </span>
+              </div>
+            </div>
+          `
+        })
+        break;
+      default:
+        return default_options
+    }
+  }
+
+  updateMarker(position, marker) {
+    // updating position of marker
+    let { visible, marker_object, info_bubble, info_window, marker_options, type } = marker;
+    let { map } = this;
+    visible = true;
+
+    marker_object.setMap(map);
+    console.log(position);
+    debugger;
+    marker_object.setPosition(position);
+    marker_object.setIcon(this.getIcon(type, marker.object));
+
+    if(info_bubble) {
+      setTimeout( _ => {
+        console.log(position);
+        debugger;
+        info_bubble.setPosition(new google.maps.LatLng(position.lat, position.lng));
+        info_bubble.setOptions(this.getBubbleOptions(marker))
+      }, 0)
+    }
+  }
+
+  removeMarker(key) {
+    console.log(`removing ${key}`);
+    let { markers } = this;
+    // remove from spots and markers
+    let index_marker_to_remove = markers.findIndex( marker => marker.key == key);
+    if (index_marker_to_remove > -1) {
+      markers[index_marker_to_remove].visible = false;
+      markers[index_marker_to_remove].marker_object.setMap(null);
+      markers.splice(index_marker_to_remove, 1);
+      // if(info_bubble) info_bubble.close();
+    }
+
+  }
+
+  removeDirection(key) {
+    console.log(`removing path ${key}`);
+    let { directions } = this;
+    // remove from spots and directions
+    let index_direction_to_remove = directions.findIndex( direction => direction.key == key);
+    if (index_direction_to_remove > -1) {
+      directions[index_direction_to_remove].visible = false;
+      directions[index_direction_to_remove].direction_object.setMap(null);
+      directions.splice(index_direction_to_remove, 1);
+    }
+  }
+
+
+  shouldComponentUpdate() {
+    return false;
+  }
+
+  getPoints(user) {
+    const { jobs, date } = this.props;
+    // return coordinates for user's day
+    let points = [];
+    // first point is current position
+    points.push(user.last_known_location);
+    // for all upcoming jobs
+    let day_jobs = user.jobs.filter( job =>
+      moment(new Date(job.start_date)).isSame(moment(date), 'day') &&
+      job.status != 'past' && job.status != 'done'
+    )
+    for (let i = 0; i < day_jobs.length; i ++) {
+      // find job object
+      let job =  day_jobs[i];
+      if (job) points.push(job.geo_location);
+    }
+    return points;
+  }
+
+  getIcon(type, object) {
+    let default_icon = {
+
+    }
+
+    let url;
+
+    if (type == 'search') {
+      url = ("<%=asset_path'marker_search.png'%>");
+      return Object.assign({}, default_icon, {
+        url,
+      })
+    }
+    else if (type == 'user') {
+      let user = object;
+      switch (LF.getColor(UsersObject.get('availability', user))) {
+        case 'green':
+        url = (`<%=asset_path'marker_user-green.png'%>`)
+          break;
+        case 'red':
+        url = (`<%=asset_path'marker_user-red.png'%>`)
+          break;
+        case 'gray':
+        default:
+        url = (`<%=asset_path'marker_user-gray.png'%>`)
+      }
+      return Object.assign({}, default_icon, {
+        url,
+        size: new google.maps.Size(100, 100),
+        scaledSize: new google.maps.Size(30, 30),
+        origin: new google.maps.Point(0, 0),
+        anchor: new google.maps.Point(18, 18),
+      })
+    }
+
+    else if (type == 'job') {
+      let job = object;
+      switch (LF.getColor(job.status)) {
+        case 'green':
+        url = (`<%=asset_path'marker_job-green.png'%>`)
+          break;
+        case 'blue':
+        url = (`<%=asset_path'marker_job-blue.png'%>`)
+          break;
+        case 'yellow':
+        url = (`<%=asset_path'marker_job-yellow.png'%>`)
+          break;
+        case 'gray':
+        default:
+        url = (`<%=asset_path'marker_job-gray.png'%>`)
+      }
+      return Object.assign({}, default_icon, {
+        url,
+      })
+    }
+
+    else if (type == 'start') {
+      let job = object;
+      url = (`<%=asset_path'marker_start.png'%>`)
+      return Object.assign({}, default_icon, {
+        url,
+      })
+    }
+
+    else if (type == 'end') {
+      let job = object;
+      url = (`<%=asset_path'marker_end.png'%>`)
+      return Object.assign({}, default_icon, {
+        url,
+      })
+    }
+  }
+}

@@ -16,3 +16,6 @@ In this repo I will talk about how I built a heavy-functioning map feature for t
 - If looking at future days, we would like see locations of their jobs.
 - Markers showing location of jobs assigned on that day that is not assigned to any drivers.
 - Ability to assign/unassign jobs to/from drivers right from the interface.
+- Hovering on job/driver markers should show additional information about them.
+- Clicking on job/driver markers should give more details about the item.
+- Efficiently update/add/remove markers based on new props being polled.

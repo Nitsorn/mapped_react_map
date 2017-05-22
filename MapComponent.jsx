@@ -61,7 +61,6 @@ class MapComponent extends React.Component {
     const { company } = this.props;
     return (
       <div className='lf-full-width lf-position-relative lf-overflow-hidden'>
-        <Sidebar_New company={this.props.company}/>
         <div className='map_tab_react'>
           {this.renderMapOverlay()}
           {this.renderModals()}
@@ -178,8 +177,6 @@ class MapComponent extends React.Component {
       date: new Date(date).toString(),
       user_ids: selected_users
     }, (err, response) => {
-      if (response.users.length > 37)
-        console.log(`getting ${response.users[37].jobs.length} jobs for ${moment(this.state.date).format('ll')}`);
       this.setState({
         users: response.users,
         selected_users,

@@ -21,7 +21,8 @@ In this repo I will talk about how I built a heavy-functioning map feature for t
 
 Note:
 - This is a part of a bigger project, so you will see some unmentioned Components.
-- Most of the rendering is in `<Map />` component. It gets props (date, selected users, unassigned jobs etc.)
+- Map rendering is in `<Map />` component. It gets props (date, selected users, unassigned jobs etc.)
+- MapComponent is parent component.
 - Props are as follows:
 
 ```

@@ -2,25 +2,23 @@ class MapComponent extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      users: props.users,
+      users: [],
       date: moment().startOf('day'),
       geo_location_search: null,
-      selected_users: props.users.filter( user => {
-        return (
-          user.account_active &&
-          user.gps_enabled && !user.inactive && user.mobile && user.last_known_location
-        )
-      }).map( user => user.id ),
+      selected_users: [],
       day_jobs: [],
       object_on_focus: null,
-      job_on_focus: null, //job modal
-      customer_on_focus: null //customer modal
     }
     this.poll_for_user_travel_details = null;
   }
 
+  componentWillUnmount() {
+    clearInterval(this.poll_for_user_travel_details);
+  }
+
   componentDidMount() {
-    this.refreshMap(this.state.date, this.state.selected_users);
+    const { date, selected_users } = this.state;
+    this.refreshMap(date, selected_users);
     this.poll_for_user_travel_details = setInterval(this.getUsersTravelDetails.bind(this, false), 10000);
   }
 
@@ -38,12 +36,8 @@ class MapComponent extends React.Component {
     });
   }
 
-  componentWillUnmount() {
-    clearInterval(this.poll_for_user_travel_details);
-  }
-
   getUnassignedJobs(date) {
-    LF.fetch(
+    API.fetch(
       'GET',
       '/jobs/unassigned_day_jobs', {
         date: new Date(date).toString(),
@@ -58,15 +52,14 @@ class MapComponent extends React.Component {
   }
 
   render() {
-    const { company } = this.props;
     return (
-      <div className='lf-full-width lf-position-relative lf-overflow-hidden'>
+      <div className='my-full-width my-position-relative my-overflow-hidden'>
         <div className='map_tab_react'>
           {this.renderMapOverlay()}
           {this.renderModals()}
           {this.renderMap()}
-          {this.renderNewJobFullScreen()}
-          {this.renderAddNewJob()}
+          {this.renderNewJobForm()}
+          {this.renderAddNewJobButton()}
         </div>
       </div>
     )
@@ -77,6 +70,8 @@ class MapComponent extends React.Component {
     const { geo_location_search, selected_users, day_jobs, users, auto_pan, date } = this.state;
     return (
       <Map
+        date={date}
+        jobs={day_jobs}
         company={company}
         geo_location_search={geo_location_search}
         auto_pan={auto_pan}
@@ -85,8 +80,6 @@ class MapComponent extends React.Component {
         })}
         onSelectObject={ object => this.setState({object_on_focus: object})}
         selected_users={selected_users}
-        jobs={day_jobs}
-        date={date}
       />
     )
   }
@@ -123,17 +116,17 @@ class MapComponent extends React.Component {
             });
           }}
         />
-        { object_on_focus ?
+        { object_on_focus &&
           <MapObjectPanel
             date={date}
             jobs={day_jobs}
             users={users}
+            object={object_on_focus}
+            onRefresh={this.refreshMap.bind(this)}
             onClose={ _ => this.setState({object_on_focus: null})}
             onExpandJob={ job_on_focus => this.setState({job_on_focus})}
             onExpandCustomer={ customer_on_focus => this.setState({customer_on_focus})}
-            object={object_on_focus}
-            onRefresh={this.refreshMap.bind(this)}
-          /> : ''
+          />
         }
         <MapLegendPanel />
       </div>
@@ -147,24 +140,22 @@ class MapComponent extends React.Component {
       <div>
         {
           job_on_focus &&
-          <ExistingJob
-            zIndex={11}
+          <JobInfoComponent
+            company={company}
 						job={job_on_focus}
 						onClose={ _ => this.setState({
               job_on_focus: null
             }, this.refreshMap.bind(this))}
-						company={company}
 					/>
         }
         {
           customer_on_focus &&
-          <ExistingCustomer
-            zIndex={11}
+          <CustomerInfoComponent
+            company={company}
 						customer={customer_on_focus}
 						onClose={ _ => this.setState({
               customer_on_focus: null
             }, this.refreshMap.bind(this))}
-						company={company}
 					/>
         }
       </div>
@@ -173,20 +164,22 @@ class MapComponent extends React.Component {
 
   getUsersTravelDetails(auto_pan) {
     let { object_on_focus, selected_users, date } = this.state;
-    LF.fetch('GET','/users/get_travel_details',{
+    API.fetch('GET','/users/get_travel_details', {
       date: new Date(date).toString(),
       user_ids: selected_users
     }, (err, response) => {
+
       this.setState({
         users: response.users,
         selected_users,
+
       }, _ => {
         auto_pan && this.autopan();
       })
     })
   }
 
-  renderNewJobFullScreen() {
+  renderNewJobForm() {
 		const { company } = this.props;
 		let { date, add_new_job, day_jobs } = this.state;
 		return (
@@ -197,28 +190,32 @@ class MapComponent extends React.Component {
 					add_new_job: false,
 				})}
 			>
-				{ add_new_job ?
-					<NewJob
+				{ add_new_job &&
+					<SomeJobForm
 						company={company}
+            date={date}
 						closeModal={ _ => this.setState({
 							add_new_job: false
 						}, this.refreshMap.bind(this))}
-						date={date}
-					/> : ''
+					/>
 				}
 			</AnimatedFullScreen>
 		)
 	}
 
-  renderAddNewJob() {
+  renderAddNewJobButton() {
+    // just button to add new job
+
 		return (
 			<div
-				onClick={ _ => this.setState({add_new_job: true})}
-				className='add_new_job_button lf-animate lf-animate-fast lf-align-items-inline'
+				className='add_new_job_button my-animate my-animate-fast my-align-items-inline'
+        onClick={ _ => this.setState({add_new_job: true})}
 			>
-				<i className='lf-icon lf-icon-new-job' />
+				<i className='my-icon my-icon-new-job' />
 			</div>
 		)
 	}
+
+
 
 }

@@ -18,28 +18,12 @@ class MapObjectPanel extends React.Component{
 
 	initialize(props) {
 		let { object, users, jobs } = props;
-		if (object.type == 'user') {
-			object = users.filter( user => user.id == object.id )[0];
-			object.type = 'user';
-		}
-		else {
-			if (object.user_id) {
-				object = users
-									.filter( user => user.id == object.user_id )[0]
-									.jobs.filter( job => job.id == object.id)[0];
-			}
-			else {
-				object = jobs.filter( job => job.id == object.id )[0];
-			}
-			if (!object) return;
-			object.type = 'job';
-		}
 
 		this.setState({ object }, _ => {
 			if (object.type == 'job')
 				// get users for job
 				this.getJobUsers(object.id);
-			if (object.type == 'user' && object.status.toLowerCase().indexOf('driving') > -1) {
+			if (object.type == 'user' && object.status == 'driving') {
 				// if user is driving to job, get ETA and update state.user
 				this.getETA(object.id);
 			}
@@ -47,7 +31,7 @@ class MapObjectPanel extends React.Component{
 	}
 
 	getJobUsers(job_id) {
-		LF.fetch('GET', '/jobs/get_participants', { id: job_id }, (err, response) => {
+		API.fetch('GET', '/jobs/get_participants', { id: job_id }, (err, response) => {
 			if (err) console.log(err);
 			else {
 				let { object } = this.state;
@@ -119,14 +103,14 @@ class MapObjectPanel extends React.Component{
 							borderLeft: `4px solid #${object.color}`
 						} : {}
 					}
-					className='lf-card expanded lf-overflow-auto'
+					className='my-card expanded my-overflow-auto'
 					onClick={ _ => this.setState({
 						expanded: !expanded
 					})}
 				>
 					<div
 						onClick={onClose}
-						className='map_panel-expand_toggle map_panel-close lf-animate lf-cursor-pointer lf-animate-fast'
+						className='map_panel-expand_toggle map_panel-close my-animate my-cursor-pointer my-animate-fast'
 					/>
 					{this.renderObjectContent()}
 				</div>
@@ -142,44 +126,44 @@ class MapObjectPanel extends React.Component{
 			 <div className='map_panel-object-job'>
 				 <div>
 					 <h4
-						 className='lf-align-items-inline'
+						 className='my-align-items-inline'
 					 >
-					 		<i className='lf-icon lf-icon-job' />
+					 		<i className='my-icon my-icon-job' />
 						 {job.name}</h4>
 					 <div
-						 style={{color: LF.getColor(job.status, true)}}
-						 className='lf-float-right lf-padding-five lf-uppercase'>{job.status}</div>
+						 style={{color: APP.getColor(job.status, true)}}
+						 className='my-float-right my-padding-five my-uppercase'>{job.status}</div>
 				 </div>
 				 <div className='map_panel-object-job-info'>
 					 <span>
-						 <h6 className='lf-align-items-inline lf-bold lf-inline-block'>
-							 <i className='lf-icon lf-icon-information' />
+						 <h6 className='my-align-items-inline my-bold my-inline-block'>
+							 <i className='my-icon my-icon-information' />
 							 Job Info
 						 </h6>
 					 </span>
 					 <span
 						 onClick={onExpandJob.bind(null, job)}
-						 className='lf-float-right expand'>expand
+						 className='my-float-right expand'>expand
 					 </span>
-					 <div className='lf-padding-ten'>
+					 <div className='my-padding-ten'>
 						 <div>Date: {moment(new Date(job.start_date)).format('ll')}</div>
 						 <div>Time: {moment(new Date(job.start_date)).format('LT')}</div>
-						 <div>Address: {JobObject.format('address',job)}</div>
+						 <div>Address: {APP.format('address',job)}</div>
 					 </div>
 				 </div>
 				 <div className='map_panel-object-job-info'>
 					 <span>
-						 <h6 className='lf-align-items-inline lf-bold lf-inline-block'>
-							 <i className='lf-icon lf-icon-customer' />
+						 <h6 className='my-align-items-inline my-bold my-inline-block'>
+							 <i className='my-icon my-icon-customer' />
 							 Customer Info
 						 </h6>
 					 </span>
 					 <span
 						 onClick={onExpandCustomer.bind(null, job.customer)}
-						 className='lf-float-right expand'>expand</span>
-					 <div className='lf-padding-ten'>
-						 <div>Name: {CustomerObject.format('name', job.customer)}</div>
-						 <div>Number: {CustomerObject.format('phone_number', job.customer)}</div>
+						 className='my-float-right expand'>expand</span>
+					 <div className='my-padding-ten'>
+						 <div>Name: {APP.format('name', job.customer)}</div>
+						 <div>Number: {APP.format('phone_number', job.customer)}</div>
 					 </div>
 				 </div>
 				 <div className='map_panel-object-job-info'>
@@ -198,14 +182,14 @@ class MapObjectPanel extends React.Component{
 			return (
 				<div className=' map_panel-object-user '>
 					<h4
-						className='lf-align-items-inline'
+						className='my-align-items-inline'
 					>
-						<i className='lf-icon lf-icon-male' />
+						<i className='my-icon my-icon-male' />
 						{UsersObject.format('name', user)}
 					</h4>
 					<div
-						style={{color: LF.getColor(user.availability, true)}}
-						className='lf-float-right lf-padding-five lf-uppercase'>{user.availability}
+						style={{color: APP.getColor(user.availability, true)}}
+						className='my-float-right my-padding-five my-uppercase'>{user.availability}
 					</div>
 					<br /> <br />
 					{
@@ -215,8 +199,8 @@ class MapObjectPanel extends React.Component{
 								className='map_panel-object-user-moment map_panel-object-user-moment-past'
 								key={time_card.id}
 							>
-								<span className='lf-bold'>{time_card.job_name}</span>
-								<div className='lf-float-right'>
+								<span className='my-bold'>{time_card.job_name}</span>
+								<div className='my-float-right'>
 									{moment(new Date(time_card.start_time)).format('LT')}
 								</div>
 							</div>
@@ -227,8 +211,8 @@ class MapObjectPanel extends React.Component{
 						<div
 							className='map_panel-object-user-moment map_panel-object-user-moment-right_now'
 						>
-							<span className='lf-bold'>Right now</span>
-							<div className='lf-float-right'>
+							<span className='my-bold'>Right now</span>
+							<div className='my-float-right'>
 								{moment().format('LT')}
 							</div>
 							<div className='map_panel-object-user-moment-right_now-content'>
@@ -237,11 +221,11 @@ class MapObjectPanel extends React.Component{
 									// on/driving to job. show job info
 									<div>
 										<div>{current_job.name}</div>
-										<div>{JobObject.format('address', current_job)}</div>
+										<div>{APP.format('address', current_job)}</div>
 										{	(user.duration_to_job && user.distance_to_job) &&
 											// driving to that job
 											<div>
-												ETA: <span className='lf-green-text'>{user.duration_to_job.text}</span> ({user.distance_to_job.text}) away from job
+												ETA: <span className='my-green-text'>{user.duration_to_job.text}</span> ({user.distance_to_job.text}) away from job
 											</div>
 										}
 									</div>
@@ -257,9 +241,9 @@ class MapObjectPanel extends React.Component{
 								className='map_panel-object-user-moment map_panel-object-user-moment-future'
 								key={job.id}
 							>
-								<span className='lf-bold'>{job.name}</span>
+								<span className='my-bold'>{job.name}</span>
 								{ job.id == current_job.id && user.duration_to_job &&
-									<div className='lf-float-right map_panel-object-user-moment-time_stamp-tentative'>
+									<div className='my-float-right map_panel-object-user-moment-time_stamp-tentative'>
 										{moment().add(user.duration_to_job.value, 'seconds').format('LT')}
 									</div>
 								}

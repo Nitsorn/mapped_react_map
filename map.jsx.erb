@@ -12,7 +12,10 @@ class Map extends React.Component {
 
   render() {
     return (
-      <div id='map' className='map_react '/>
+      <div
+        id='map'
+        className='map_react '
+      />
     )
   }
 
@@ -23,23 +26,20 @@ class Map extends React.Component {
   initializeMap() {
 		const { company } = this.props;
 		let map_element = document.getElementById('map');
-		let map_options = LF.getMapOption(company);
+		let map_options = APP.getMapOption(company);
     this.directions_service = new google.maps.DirectionsService();
 		this.map = new google.maps.Map(map_element, map_options);
     this.draw(this.props, true);
 	}
 
   componentWillReceiveProps(nextProps) {
-    let changes_in_selected_users = nextProps.selected_users.length != this.state.selected_users.length;
-    console.log(nextProps.auto_pan);
     this.draw(nextProps, nextProps.auto_pan);
-    // this.setState(Object.assign({}, this.state, {
-    //   selected_users: nextProps.selected_users
-    // }))
   }
 
   draw(props, changes_in_selected_users) {
     // where most of drawing happen
+    // TODO: make into Promise
+
     this.plotSearch(props, _ => {
       this.plotJobs(props, false, _ => {
         this.plotUsers(props, _ => {
@@ -63,11 +63,29 @@ class Map extends React.Component {
     callback();
   }
 
+
+
   plotUsers(nextProps, callback) {
+    let { users, date } = nextProps;
+
+    this.cleanUserMarkers(nextProps);
+    this.cleanUserDirections(nextProps);
+
+    // show markers of those that are
+    for (let i = 0; i < users.length; i ++) {
+      let user = users[i];
+
+      this.plotUserInfo(user, date);
+
+    }
+    callback();
+  }
+
+  cleanUserMarkers(nextProps) {
     const { markers, map, directions } = this;
     let { users, selected_users, date } = nextProps;
     let current_user_markers = markers.filter(marker => marker.user_id != null);
-    let current_user_directions = directions;
+
     // hide markers of users not in next props
     for (let i = 0; i < current_user_markers.length; i ++) {
       let marker = current_user_markers[i];
@@ -75,18 +93,26 @@ class Map extends React.Component {
         (selected_users.indexOf(marker.user_id) == -1) ||  //user no longer in selected array
         (!moment(new Date(marker.date)).isSame(moment(date), 'day')) //different day
       ) {
-        // this user is no longer selected. Hide the marker.
-        console.log(`remove worker ${marker.key}`);
+
+        // this user is no longer selected. Hide the user marker.
         this.removeMarker(marker.key);
+
         // hide all his job and start/end markers;
         let all_user_related_markers = markers.filter( each_marker =>
           each_marker.user_id == marker.user_id
         );
+
         for (let i = 0; i < all_user_related_markers.length; i ++ ) {
           this.removeMarker(all_user_related_markers[i].key)
         }
       }
     }
+  }
+
+  cleanUserDirections(nextProps) {
+    const { markers, map, directions } = this;
+    let { users, selected_users, date } = nextProps;
+    let current_user_directions = directions;
 
     // hide directions of users not in next props
     for (let i = 0; i < current_user_directions.length; i ++) {
@@ -96,34 +122,26 @@ class Map extends React.Component {
         (selected_users.indexOf(direction.user_id) == -1) || // user was unselected
         !(moment(new Date(date)).isSame(moment(new Date(direction.date)), 'day')) //same day
       ) {
-        console.log(' ');
-        console.log('--------------------------------------');
-        console.log(new Date(date).toString());
-        console.log(new Date(direction.date).toString());
-        console.log('--------------------------------------');
-        console.log(' ');
         // this user is no longer selected. Hide the direction.
         this.removeDirection(direction.key);
       }
     }
-    // show markers of those that are
-    for (let i = 0; i < users.length; i ++) {
-      let user = users[i];
-
-      if (moment(date).isSame(moment(), 'day'))
-        this.addOrUpdateMarker(user.last_known_location, 'user', user, user.id);
-
-      if (user.jobs) {
-        this.plotJobs(user, true);
-        this.plotStartAndEndPoints(user);
-        this.plotPathFromPastTravelReports(user);
-        if (moment(date).diff(moment(), 'days') >= 0)
-          // if not past
-          this.plotPathToFutureJobs(user);
-      }
-    }
-    callback();
   }
+
+  plotUserInfo(user) {
+    if (moment(date).isSame(moment(), 'day'))
+      this.addOrUpdateMarker(user.last_known_location, 'user', user, user.id);
+
+    if (user.jobs) {
+      this.plotJobs(user, true);
+      this.plotStartAndEndPoints(user);
+      this.plotPathFromPastTravelReports(user);
+      if (moment(date).diff(moment(), 'days') >= 0)
+        // if not past
+        this.plotPathToFutureJobs(user);
+    }
+  }
+
 
   plotPathFromPastTravelReports(user) {
     const { date } = this.props;
@@ -191,24 +209,6 @@ class Map extends React.Component {
           direction_object: new google.maps.DirectionsRenderer({
             suppressMarkers: true,
             preserveViewport: true,
-            // polylineOptions: {
-            //   icons: [
-            //     // {
-            //     //   icon: {path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW},
-            //     //   offset: '100%'
-            //     // },
-            //     {
-            //       icon: {
-            //         path: google.maps.SymbolPath.CIRCLE,
-            //         scale: 8,
-            //         strokeColor: '#393'
-            //       },
-            //       offset: '100%',
-            //     }
-            //   ],
-            //   strokeOpacity: 0.5,
-            //   strokeWeight: 5,
-            // }
           })
         };
         this.directions.push(direction);
@@ -324,7 +324,7 @@ class Map extends React.Component {
     }
     else {
       // add company's location
-      let company_latlng = LF.getLatLng(company.address);
+      let company_latlng = APP.getLatLng(company.address);
       if (company_latlng) bounds.extend(company_latlng);
       else bounds.extend({
         lat: 40.712784,
@@ -336,11 +336,12 @@ class Map extends React.Component {
   }
 
   addOrUpdateMarker(position, type, object, user_id) {
+    // either add or update marker if its already on map.
+
     const { date, onSelectObject } = this.props;
     let lat = Number(position.split(',')[0]) || null;
     let lng = Number(position.split(',')[1]) || null;
-        position = {lat, lng};
-        console.log(position);
+    let position = {lat, lng};
 
     let { markers, map } = this;
     // find if it already exists
@@ -350,13 +351,19 @@ class Map extends React.Component {
         (marker.object ? marker.object.id == object.id : true)
       )
     });
+
     if (index_marker_that_matches_this > -1) {
+      // found the marker.
+      // update it.
+
       markers[index_marker_that_matches_this].object = object;
       let marker_that_matches_this = markers[index_marker_that_matches_this];
-      debugger;
+
       this.updateMarker(position, marker_that_matches_this);
       return;
     }
+
+    // havent found the marker. Create new one.
     let this_marker = {
       key: null,
       position,
@@ -373,6 +380,8 @@ class Map extends React.Component {
 
     if (type == 'search') {
       this_marker.key = 'search';
+      // NOTE uncomment the 2 lines below if you want mapBubble for seach marker
+
       // this_marker.info_bubble = new InfoBubble(this.getBubbleOptions(this_marker));
       // this_marker.info_window = new google.maps.InfoWindow(this.getWindowOptions(this_marker));
       this_marker.marker_options = Object.assign({}, this_marker.marker_options, {
@@ -417,21 +426,20 @@ class Map extends React.Component {
       })
     }
 
-
-    if (true) {
-      // do something else additional along the line, like adding more style
-      // based on status etc.
-    }
-
     this_marker.marker_object = new google.maps.Marker(this_marker.marker_options);
     this_marker.marker_object.addListener('mouseover', _ => {
+      // open bubble when cursor enter marker
       if (this_marker.info_bubble) this_marker.info_bubble.open(map, this_marker.marker_object);
     })
     this_marker.marker_object.addListener('mouseout', _ => {
+      // hide bubble when cursor exit marker
       if (this_marker.info_bubble) this_marker.info_bubble.close();
     })
     this_marker.marker_object.addListener('click', _ => {
+      // update MapComponent's object_on_focus
+
       if ('start, end, search'.indexOf(this_marker.type) == -1)
+        // if type is not start, end, search
         onSelectObject({
           type,
           id: this_marker.object.id,
@@ -445,11 +453,11 @@ class Map extends React.Component {
   }
 
   getBubbleOptions(marker) {
+    // style marker element
+
     const { map } = this;
-    // let new_lat = marker.lat + (0.00003 * Math.pow(2, (21 - map.getZoom())));
     let new_lat = marker.lat;
     let default_options = {
-      // position: new google.maps.LatLng(new_lat, marker.lng),
       hideCloseButton: true,
       arrowSize: 0,
       padding: 0,
@@ -467,7 +475,7 @@ class Map extends React.Component {
     switch (marker.type) {
       case 'search':
         return Object.assign({}, default_options, {
-          content: `<i class='lf-icon lf-icon-marker map_bubble map_buble-search lf-icon-big' />`,
+          content: `<i class='my-icon my-icon-marker map_bubble map_buble-search my-icon-big' />`,
         })
         break;
       case 'user':
@@ -476,16 +484,16 @@ class Map extends React.Component {
           content: `
             <div class='map_bubble map_bubble-user'>
               <div class='map_bubble-user-content'>
-                <span class='map_bubble-user-name lf-bold'>
+                <span class='map_bubble-user-name my-bold'>
                   ${UsersObject.format('name',user)}
                 </span>
-                <div class='lf-float-right map_bubble-user-availability' style='color: ${LF.getColor(user.availability, true)}'>
+                <div class='my-float-right map_bubble-user-availability' style='color: ${APP.getColor(user.availability, true)}'>
                   ${UsersObject.get('availability', user)}
                 </div>
                 <div class='map_bubble-user-location_update'>
                   Location updated ${moment(user.last_location_update).fromNow()}
                 </div>
-                <div class='map_bubble-user-status' style='background-color: ${LF.getColor(UsersObject.get('status', user), true)}'>
+                <div class='map_bubble-user-status' style='background-color: ${APP.getColor(UsersObject.get('status', user), true)}'>
                   ${UsersObject.get('status', user)}
                 </div>
               </div>
@@ -499,14 +507,14 @@ class Map extends React.Component {
           content: `
             <div class='map_bubble map_bubble-job' style='border-left-color: #${job.color}'>
               <div class='map_bubble-job-content'>
-                <span class='map_bubble-job-name lf-bold'>
-                  ${LF.format('string',job.name, 20)}
+                <span class='map_bubble-job-name my-bold'>
+                  ${APP.format('string',job.name, 20)}
                 </span>
-                <div class='lf-float-right map_bubble-job-status' style='color: ${LF.getColor(job.status, true)}'>
+                <div class='my-float-right map_bubble-job-status' style='color: ${APP.getColor(job.status, true)}'>
                   ${job.status}
                 </div>
                 <div class='map_bubble-job-address'>
-                  ${LF.format('string',JobObject.format('address', job), 30)}
+                  ${APP.format('string',APP.format('address', job), 30)}
                 </div>
                 <div class='map_bubble-job-time'>
                   ${moment(new Date(job.start_date)).format('LT')} - ${moment(new Date(job.end_date)).format('LT')}
@@ -523,15 +531,15 @@ class Map extends React.Component {
           content: `
             <div class='map_bubble map_bubble-user'>
               <div class='map_bubble-user-content'>
-                <span class='map_bubble-user-name lf-bold'>
+                <span class='map_bubble-user-name my-bold'>
                   ${UsersObject.format('name', travel_report.user)}
                 </span>
                 <br />
-                <div class='lf-float-right '>
+                <div class='my-float-right '>
                   ${moment(new Date(marker.type == 'start' ? travel_report.start_time : travel_report.arrival_time)).format('LT')}
                 </div>
-                <span class='map_bubble-user-name lf-bold'>
-                  <span class='lf-capitalize'>${marker.type} day</span>
+                <span class='map_bubble-user-name my-bold'>
+                  <span class='my-capitalize'>${marker.type} day</span>
                 </span>
               </div>
             </div>
@@ -544,7 +552,8 @@ class Map extends React.Component {
   }
 
   updateMarker(position, marker) {
-    // updating position of marker
+    // updating position of marker to the position (first arg)
+
     let { visible, marker_object, info_bubble, info_window, marker_options, type } = marker;
     let { map } = this;
     visible = true;
@@ -597,16 +606,19 @@ class Map extends React.Component {
   }
 
   getPoints(user) {
-    const { jobs, date } = this.props;
     // return coordinates for user's day
+    const { jobs, date } = this.props;
     let points = [];
+
     // first point is current position
     points.push(user.last_known_location);
     // for all upcoming jobs
+
     let day_jobs = user.jobs.filter( job =>
       moment(new Date(job.start_date)).isSame(moment(date), 'day') &&
       job.status != 'past' && job.status != 'done'
     )
+
     for (let i = 0; i < day_jobs.length; i ++) {
       // find job object
       let job =  day_jobs[i];
@@ -617,7 +629,7 @@ class Map extends React.Component {
 
   getIcon(type, object) {
     let default_icon = {
-
+      // some default settings, if needed
     }
 
     let url;
@@ -630,7 +642,7 @@ class Map extends React.Component {
     }
     else if (type == 'user') {
       let user = object;
-      switch (LF.getColor(UsersObject.get('availability', user))) {
+      switch (APP.getColor(UsersObject.get('availability', user))) {
         case 'green':
         url = (`<%=asset_path'marker_user-green.png'%>`)
           break;
@@ -652,7 +664,7 @@ class Map extends React.Component {
 
     else if (type == 'job') {
       let job = object;
-      switch (LF.getColor(job.status)) {
+      switch (APP.getColor(job.status)) {
         case 'green':
         url = (`<%=asset_path'marker_job-green.png'%>`)
           break;

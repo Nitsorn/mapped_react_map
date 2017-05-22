@@ -21,12 +21,12 @@ class MapSearchPanel extends React.Component {
 	render() {
 		const { onSearchAddress } = this.props;
 		return (
-			<div className='map_panel map_panel-search lf-align-items-inline'>
-				<i className='lf-icon lf-icon-search' />
+			<div className='map_panel map_panel-search my-align-items-inline'>
+				<i className='my-icon my-icon-search' />
 				<input
 					ref='search_bar'
 					type='text'
-					className='lf-card lf-gray-placeholder'
+					className='my-card my-gray-placeholder'
 					placeholder='Search Map'
 					onBlur={this.getGeolocationIfDoesntExist.bind(this)}
 					onChange={onSearchAddress.bind(null, null)}

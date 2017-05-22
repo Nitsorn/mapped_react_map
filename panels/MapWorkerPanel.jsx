@@ -13,27 +13,27 @@ class MapWorkersPanel extends React.Component {
 		return (
 			<div className='map_panel map_panel-workers'>
 				<div
-					className={'lf-card ' + (expanded ? 'expanded' : '')}
+					className={'my-card ' + (expanded ? 'expanded' : '')}
 					onClick={ _ => this.setState({
 						expanded: !expanded
 					})}
 				>
-					<div className='map_panel-expand_toggle lf-animate lf-animate-fast'></div>
-					<h4 className='lf-align-items-inline lf-unselectable lf-padding-ten lf-no-padding-top lf-no-padding-bottom'>
-						<i className='lf-icon lf-icon-participants'/>
+					<div className='map_panel-expand_toggle my-animate my-animate-fast'></div>
+					<h4 className='my-align-items-inline my-unselectable my-padding-ten my-no-padding-top my-no-padding-bottom'>
+						<i className='my-icon my-icon-participants'/>
 						<span>Tracking {selected_users.length} worker{selected_users.length == 1 ? '' : 's'}</span>
 					</h4>
 					<div
-						className='lf-align-items-inline lf-padding-ten lf-no-padding-top lf-align-center'
+						className='my-align-items-inline my-padding-ten my-no-padding-top my-align-center'
 						onClick={ e => e.stopPropagation()}
 					>
-						<i className='lf-icon lf-icon-search' />
+						<i className='my-icon my-icon-search' />
 						<input
 							placeholder='Search Worker'
 							onChange={ e => this.setState({
 								query: e.target.value
 							})}
-							className='lf-input lf-input-underline lf-no-margin lf-align-left'
+							className='my-input my-input-underline my-no-margin my-align-left'
 						/>
 					</div>
 					{this.renderWorkers()}
@@ -64,19 +64,19 @@ class MapWorkersPanel extends React.Component {
 								if (user.mobile && user.last_known_location)
 									onToggleUser(user.id)
 							}}
-							className='map_panel-workers-worker lf-align-items-inline'
+							className='map_panel-workers-worker my-align-items-inline'
 						>
 							<span>
 								{UsersObject.format('name', user)} - <span className={UsersObject.get('availability', user)}>
 									{UsersObject.get('availability', user)}
 								</span>
 							</span>
-							<div className='lf-float-right'>
+							<div className='my-float-right'>
 								{
 									user.mobile && user.last_known_location ? (
 										<div
 											className={
-												'map_panel-workers-worker-checkbox lf-cursor-pointer ' +
+												'map_panel-workers-worker-checkbox my-cursor-pointer ' +
 												(selected_users.indexOf(user.id) > -1 ? 'checked' : '')
 											}
 										/>

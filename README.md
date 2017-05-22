@@ -4,10 +4,11 @@ Snippet of a complex map component I built using React.
 
 (mapped_react_map/mapped_react_map.png)
 ![Screenshot](mapped_react_map/mapped_react_map.png?raw=true "Optional Title"/)
+![solarized palette](https://github.com/Nitsorssn/mapped_react_map/master/mapped_react_map.png)
 
 Building an efficient complex map component can be slightly tricky on React, since most of the rendering would be done outside the `render()` function. When building features that involve live tracking, route optmization and viewing past travel routes, the data-flow if the map-render component should be able to catch changes in props from the parent components.
 
-In this repo I will talk about how I built a heavy-functioning map feature for tracking drivers that covers the following:
+In this repo I will talk about how I built a heavy-functioning map feature for tracking drivers that covers the following:ss
 
 - Each driver has many jobs
 - We would like to see jobs of one/multiple drivers on a particular day

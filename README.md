@@ -25,18 +25,21 @@ Note:
 - Props are as follows:
 
 ```
-user = {
-  jobs: [],
-  travel_reports: [
-    {
-      job_name, // either job's name, or "start day", "end day" 
-      job_id, //nil means start or end or free day tracking
-      actual_routes: ['lat,lng', 'lat,lng'], // this is array of points sent from mobile app.
-    }
-  ]
-},
-date, // moment object
-jobs = [], // these are unassigned jobs on that day
+{
+  user = {
+    jobs: [],
+    travel_reports: [
+      {
+        job_name, // either job's name, or "start day", "end day" 
+        job_id, //nil means start or end or free day tracking
+        actual_routes: ['lat,lng', 'lat,lng'], // this is array of points sent from mobile app.
+      }
+    ]
+  },
+  date, // moment object
+  jobs = [], // these are unassigned jobs on that day,
+  other_stuff // look at code
+}
 ```
 
 

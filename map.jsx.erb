@@ -38,47 +38,49 @@ class Map extends React.Component {
 
   draw(props, changes_in_selected_users) {
     // where most of drawing happen
-    // TODO: make into Promise
-
-    this.plotSearch(props, _ => {
-      this.plotJobs(props, false, _ => {
-        this.plotUsers(props, _ => {
-          // only refit bounds if there were changes in users selected
-          if (changes_in_selected_users)
-            this.fitBounds();
-            console.log(this.markers);
-            console.log(this.directions);
-        })
-      });
-    });
+    this.plotSearch(props)
+      .then( _ => {
+        this.plotJobs(props, false)
+      })
+      .then( _ => {
+        this.plotUsers(props)
+      })
+      .then( _ => {
+        changes_in_selected_users && this.fitBounds();
+      })
+      .catch( err => {
+        console.log(`draw error: ${err}`);
+      })
   }
 
-  plotSearch(nextProps, callback) {
-    const { geo_location_search } = nextProps;
-    if (geo_location_search)
-      this.addOrUpdateMarker(geo_location_search, 'search');
-    else
-      this.removeMarker('search');
+  plotSearch(nextProps) {
+    return new Promise((resolve, reject) => {
 
-    callback();
+      const { geo_location_search } = nextProps;
+      if (geo_location_search)
+        this.addOrUpdateMarker(geo_location_search, 'search');
+      else
+        this.removeMarker('search');
+
+      resolve();
+
+    })
   }
 
 
-
-  plotUsers(nextProps, callback) {
+  plotUsers(nextProps) {
     let { users, date } = nextProps;
+    return new Promise((resolve, reject) => {
+      this.cleanUserMarkers(nextProps);
+      this.cleanUserDirections(nextProps);
 
-    this.cleanUserMarkers(nextProps);
-    this.cleanUserDirections(nextProps);
+      // show markers of those that are
+      users.forEach( user => {
+        this.plotUserInfo(user, date);
+      })
 
-    // show markers of those that are
-    for (let i = 0; i < users.length; i ++) {
-      let user = users[i];
-
-      this.plotUserInfo(user, date);
-
-    }
-    callback();
+      resolve();
+    });
   }
 
   cleanUserMarkers(nextProps) {
@@ -87,8 +89,7 @@ class Map extends React.Component {
     let current_user_markers = markers.filter(marker => marker.user_id != null);
 
     // hide markers of users not in next props
-    for (let i = 0; i < current_user_markers.length; i ++) {
-      let marker = current_user_markers[i];
+    current_user_markers.forEach( marker => {
       if (
         (selected_users.indexOf(marker.user_id) == -1) ||  //user no longer in selected array
         (!moment(new Date(marker.date)).isSame(moment(date), 'day')) //different day
@@ -106,7 +107,7 @@ class Map extends React.Component {
           this.removeMarker(all_user_related_markers[i].key)
         }
       }
-    }
+    })
   }
 
   cleanUserDirections(nextProps) {
@@ -115,9 +116,7 @@ class Map extends React.Component {
     let current_user_directions = directions;
 
     // hide directions of users not in next props
-    for (let i = 0; i < current_user_directions.length; i ++) {
-      let direction = current_user_directions[i];
-
+    current_user_directions.forEach( direction => {
       if (
         (selected_users.indexOf(direction.user_id) == -1) || // user was unselected
         !(moment(new Date(date)).isSame(moment(new Date(direction.date)), 'day')) //same day
@@ -125,7 +124,7 @@ class Map extends React.Component {
         // this user is no longer selected. Hide the direction.
         this.removeDirection(direction.key);
       }
-    }
+    })
   }
 
   plotUserInfo(user) {
@@ -259,8 +258,6 @@ class Map extends React.Component {
         this.addOrUpdateMarker(start_day_point, 'start', Object.assign({},first_report, {user}), first_report.user_id);
 
       // end day
-
-
       let reports_with_arrival_time = travel_reports.filter( tr => tr.arrival_time && tr.job_id == 1 );
       let user_inactive_if_today = user.inactive && moment(date).isSame(moment(),'day');
       if (reports_with_arrival_time.length && user_inactive_if_today) {
@@ -274,39 +271,43 @@ class Map extends React.Component {
     }
   }
 
-  plotJobs(unassigned_or_user, is_user, callback) {
+  plotJobs(unassigned_or_user, is_user) {
     // NOTE: props passed means unassigned
     // NOTE: user means user's jobs
-    const { markers, map } = this;
-    const { date } = this.props;
-    let { jobs } = unassigned_or_user;
-    jobs = jobs.filter( job => {
-      return moment(new Date(job.start_date)).isSame(moment(date),'day')
-    }) || [];
+    return new Promise((resolve, reject) => {
 
-    if (jobs) {
-      let job_ids = jobs.map(job => job.id);
-      let current_job_markers = markers.filter( marker =>
-        marker.type == 'job' &&
-        marker.user_id == (is_user ? unassigned_or_user.id : null)
-      )
-      // hide markers of those not in next props
-      for (let i = 0; i < current_job_markers.length; i ++) {
-        let marker = current_job_markers[i];
-        if (job_ids.indexOf(marker.object.id) == -1) {
-          // this job is no longer selected. Hide the marker.
-          this.removeMarker(marker.key);
+      const { markers, map } = this;
+      const { date } = this.props;
+      let { jobs } = unassigned_or_user;
+
+      jobs = jobs.filter( job => {
+        return moment(new Date(job.start_date)).isSame(moment(date),'day')
+      }) || [];
+
+      if (jobs) {
+        let job_ids = jobs.map(job => job.id);
+        let current_job_markers = markers.filter( marker =>
+          marker.type == 'job' &&
+          marker.user_id == (is_user ? unassigned_or_user.id : null)
+        )
+        // hide markers of those not in next props
+        for (let i = 0; i < current_job_markers.length; i ++) {
+          let marker = current_job_markers[i];
+          if (job_ids.indexOf(marker.object.id) == -1) {
+            // this job is no longer selected. Hide the marker.
+            this.removeMarker(marker.key);
+          }
+        }
+
+        // show markers of those that are
+        for (let i = 0; i < jobs.length; i ++) {
+          let job = jobs[i];
+          this.addOrUpdateMarker(job.geo_location, 'job', job, (is_user ? unassigned_or_user.id : null));
         }
       }
+    })
 
-      // show markers of those that are
-      for (let i = 0; i < jobs.length; i ++) {
-        let job = jobs[i];
-        this.addOrUpdateMarker(job.geo_location, 'job', job, (is_user ? unassigned_or_user.id : null));
-      }
-    }
-
-    if (callback) callback();
+    resolve();
   }
 
   fitBounds() {
@@ -333,6 +334,8 @@ class Map extends React.Component {
       map.fitBounds(bounds);
       map.setZoom(15);
     }
+    console.log(this.markers);
+    console.log(this.directions);
   }
 
   addOrUpdateMarker(position, type, object, user_id) {
